@@ -18,7 +18,7 @@ def get_article_data():
 
 # 感情分析結果の呼び出し
 def get_sentiment_data():
-    url = 'http://127.0.0.1:8000/sentiments/'
+    url = BASE_URL + '/sentiments/'
     response = requests.get(url)
 
     if response.status_code == 200:
@@ -40,12 +40,12 @@ def get_data():
 def get_year_from_data():
     df = get_article_data()
     str_date = df['fetched_at'][0]
-    date = datetime.datetime.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
+    date = datetime.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
     return date.date()
 
 
 def parse_date(str_date):
-    date = datetime.datetime.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
+    date = datetime.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
     return date.date()
 
 
@@ -73,7 +73,7 @@ def main():
     date_from = st.sidebar.date_input('いつから', min_date)
     date_to = st.sidebar.date_input('いつまで')
     st.sidebar.write('')
-    # sentiment_filter = st.sidebar.radio('感情選択', options=['Positice', 'Negative'])
+    # sentiment_filter = st.sidebar.radio('感情選択', options=['Positive', 'Negative'])
 
     st.write('条件設定が完了したら下の表示ボタンを押してください')
     st.write('')
