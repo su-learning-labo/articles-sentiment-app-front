@@ -100,9 +100,9 @@ def main():
 
         st.write(output)
 
-        # fig, ax = plt.subplots()
-        # ax = sns.barplot(data=output, x=None, y='sentiment')
-        # st.pyplot(fig)
+        fig, ax = plt.subplots()
+        sns.violinplot(data=df, x='fetched_at', y='score', hue='sentiment')
+        st.pyplot(fig)
 
 
 if __name__ == "__main__":
