@@ -5,20 +5,22 @@ from datetime import datetime as dt
 import matplotlib.pyplot as plt
 import seaborn as sns
 import japanize_matplotlib
+import sys
 
 
-# 環境チェック
-URL = 'http://127.0.0.1:8000'
-response = requests.get(URL)
-if response.status_code == 200:
-    BASE_URL = URL
-else:
-    BASE_URL = 'https://articles-sentiment-app-back.onrender.com'
+if "--environment" in sys.argv:
+    env_index = sys.argv.index("--environment")
+    env = sys.argv[env_index + 1]
+
+    if env == "production":
+        base_url = 'https://articles-sentiment-app-back.onrender.com'
+    elif env == "development":
+        base_url = 'http://localhost:8000'
 
 
 # ニュースデータの呼び出し
 def get_article_data():
-    url = BASE_URL + '/articles/'
+    url = base_url + '/articles/'
     response = requests.get(url)
 
     if response.status_code == 200:
@@ -29,7 +31,7 @@ def get_article_data():
 
 # 感情分析結果の呼び出し
 def get_sentiment_data():
-    url = BASE_URL + '/sentiments/'
+    url = base_url + '/sentiments/'
     response = requests.get(url)
 
     if response.status_code == 200:
@@ -66,6 +68,7 @@ def sentiment_graph():
 
 # streamlitメインアプリ
 def main():
+
     st.set_page_config(layout="wide")
 
     st.title('ニュース記事感情分析アプリ')
@@ -104,6 +107,7 @@ def main():
         # fig, ax = plt.subplots()
         # ax = sns.barplot(data=output, x=None, y='sentiment')
         # st.pyplot(fig)
+
 
 if __name__ == "__main__":
     main()
