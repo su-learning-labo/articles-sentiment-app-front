@@ -1,9 +1,20 @@
 import pandas as pd
 import streamlit as st
 import requests
-from datetime import datetime
+from datetime import datetime as dt
+import matplotlib.pyplot as plt
+import seaborn as sns
+import japanize_matplotlib
 
-BASE_URL = 'https://articles-sentiment-app-back.onrender.com'
+
+# 環境チェック
+URL = 'http://127.0.0.1:8000'
+response = requests.get(URL)
+if response.status_code == 200:
+    BASE_URL = URL
+else:
+    BASE_URL = 'https://articles-sentiment-app-back.onrender.com'
+
 
 # ニュースデータの呼び出し
 def get_article_data():
@@ -30,9 +41,9 @@ def get_sentiment_data():
 def get_data():
     article = get_article_data()
     sentiment = get_sentiment_data()
-    data = pd.merge(article, sentiment, left_on='id', right_on='news_id')
+    data = pd.merge(article, sentiment, left_on='id', right_on='article_id')
     df = data.filter([
-        'title', 'description', 'url', 'published_at', 'fetched_at', 'ranking', 'sentiment', 'sentiment_score'
+        'title', 'description', 'url', 'published_at', 'fetched_at', 'ranking', 'sentiment', 'score'
     ])
     return df
 
@@ -40,12 +51,12 @@ def get_data():
 def get_year_from_data():
     df = get_article_data()
     str_date = df['fetched_at'][0]
-    date = datetime.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
+    date = dt.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
     return date.date()
 
 
 def parse_date(str_date):
-    date = datetime.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
+    date = dt.strptime(str_date, '%Y-%m-%dT%H:%M:%S.%f')
     return date.date()
 
 
@@ -66,31 +77,33 @@ def main():
         """
     )
     st.write('')
-    st.sidebar.header('出力条件設定')
+    st.header('出力条件設定')
     # 冒頭データ（サンプル）表示
-    st.write(get_article_data().head())
+    # st.write(get_article_data())
+
     min_date = get_year_from_data()
-    date_from = st.sidebar.date_input('いつから', min_date)
-    date_to = st.sidebar.date_input('いつまで')
-    st.sidebar.write('')
-    # sentiment_filter = st.sidebar.radio('感情選択', options=['Positive', 'Negative'])
+    header_left, header_mid, header_right = st.columns([2.5, 2.5, 5])
+    date_from = header_left.date_input('いつから', min_date)
+    date_to = header_mid.date_input('いつまで')
+    st.write('')
 
     st.write('条件設定が完了したら下の表示ボタンを押してください')
     st.write('')
 
     if st.button('分析開始'):
-        df = get_data()
-        st.write(df)
+        # データの取得
+        df = get_data().filter(['title', 'description', 'published_at', 'fetched_at', 'sentiment', 'score', 'ranking'])
 
-        df['published_at'] = pd.to_datetime(df['published_at'])
-        df['fetched_at'] = pd.to_datetime(df['fetched_at'])
-        # df.set_index('fetched_at', inplace=True)
-        # df = df.groupby('fetched_at').count()
-        # st.dataframe(df)
-        # st.bar_chart(df, x='fetched_at', y='sentiment_score')
+        df['published_at'] = pd.to_datetime(df['published_at']).dt.date
+        df['fetched_at'] = pd.to_datetime(df['fetched_at']).dt.date
+        df.set_index('published_at', inplace=True)
+        output = df.query('@date_from <= fetched_at <= @date_to')
 
-        st.write(df.dtypes)
+        st.write(output)
 
+        # fig, ax = plt.subplots()
+        # ax = sns.barplot(data=output, x=None, y='sentiment')
+        # st.pyplot(fig)
 
 if __name__ == "__main__":
     main()
