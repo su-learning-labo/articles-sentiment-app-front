@@ -8,14 +8,10 @@ import japanize_matplotlib
 import sys
 
 
-if "--environment" in sys.argv:
-    env_index = sys.argv.index("--environment")
-    env = sys.argv[env_index + 1]
-
-    if env == "production":
-        base_url = 'https://articles-sentiment-app-back.onrender.com'
-    elif env == "development":
-        base_url = 'http://localhost:8000'
+if st.secrets.ENVIRONMENT == 'production':
+    base_url = 'https://articles-sentiment-app-back.onrender.com'
+else:
+    base_url = 'http://localhost:8000'
 
 
 # ニュースデータの呼び出し
