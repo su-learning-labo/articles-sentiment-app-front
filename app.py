@@ -1,3 +1,4 @@
+import MeCab.cli
 import pandas as pd
 import streamlit as st
 import requests
@@ -5,8 +6,7 @@ from datetime import datetime as dt
 import matplotlib.pyplot as plt
 import seaborn as sns
 import japanize_matplotlib
-import sys
-
+import MeCab
 
 if st.secrets.ENVIRONMENT == 'production':
     base_url = 'https://articles-sentiment-app-back.onrender.com'
@@ -64,7 +64,6 @@ def sentiment_graph():
 
 # streamlitメインアプリ
 def main():
-
     st.set_page_config(layout="wide")
 
     st.title('ニュース記事感情分析アプリ')
@@ -99,6 +98,14 @@ def main():
         output = df.query('@date_from <= fetched_at <= @date_to')
 
         st.write(output)
+
+        # WordCloudの前処理
+        text = list(output['description'])
+        text = ','.join(text)
+        st.write(text)
+        mecab = MeCab.Tagger()
+        result = mecab.parse(text)
+        st.write(result)
 
         fig, ax = plt.subplots()
         sns.violinplot(data=df, x='fetched_at', y='score', hue='sentiment')
