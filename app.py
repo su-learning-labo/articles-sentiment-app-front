@@ -1,4 +1,4 @@
-import MeCab.cli
+
 import pandas as pd
 import streamlit as st
 import requests
