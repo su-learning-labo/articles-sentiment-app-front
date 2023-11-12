@@ -1,4 +1,3 @@
-
 import pandas as pd
 import streamlit as st
 import requests
@@ -6,6 +5,8 @@ from datetime import datetime as dt
 import matplotlib.pyplot as plt
 import seaborn as sns
 import japanize_matplotlib
+from wordcloud import WordCloud
+from collections import Counter
 
 if st.secrets.ENVIRONMENT == 'production':
     base_url = 'https://articles-sentiment-app-back.onrender.com'
@@ -57,6 +58,27 @@ def parse_date(str_date):
     return date.date()
 
 
+def morphological(text):
+    url = base_url + '/analyze-text/'
+    response = requests.post(url, json={"text": text})
+
+    if response.status_code == 200:
+        return response.json()
+
+
+# WordCloud
+def generate_wordcloud(text):
+    wordcloud = WordCloud(
+        background_color='white',
+        font_path='static/Yusei_Magic/YuseiMagic-Regular.ttf',
+        width=800, height=400
+    ).fit_words(text)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    st.pyplot(fig)
+
+
 def sentiment_graph():
     pass
 
@@ -75,8 +97,6 @@ def main():
     )
     st.write('')
     st.header('出力条件設定')
-    # 冒頭データ（サンプル）表示
-    # st.write(get_article_data())
 
     min_date = get_year_from_data()
     header_left, header_mid, header_right = st.columns([2.5, 2.5, 5])
@@ -99,16 +119,26 @@ def main():
         st.write(output)
 
         # WordCloudの前処理
-        text = list(output['description'])
+        text = list(output['title'])
         text = ','.join(text)
-        st.write(text)
-        # mecab = MeCab.Tagger()
-        # result = mecab.parse(text)
-        # st.write(result)
+        # st.write(text)
+        nouns = morphological(text)
 
-        fig, ax = plt.subplots()
-        sns.violinplot(data=df, x='fetched_at', y='score', hue='sentiment')
-        st.pyplot(fig)
+        # 除外するキーワード指定
+        exclude_words = ['年', '月', '日', '|', 'com', 'Powered', 'by', 'ｋｍ', '東スポ', '読売', '.co.jp', 'NEWS', 'さん', 'JBpress', '%', '％', 'さま','位', '新聞', '毎日']
+        output_text = []
+        for noun in nouns['nouns']:
+            if noun not in exclude_words:
+                output_text.append(noun)
+
+        words_count = Counter(output_text)
+        result = words_count.most_common()[:30]
+        st.write(pd.DataFrame(result))
+        generate_wordcloud(dict(result))
+
+        # fig, ax = plt.subplots()
+        # sns.violinplot(data=df, x='fetched_at', y='score', hue='sentiment')
+        # st.pyplot(fig)
 
 
 if __name__ == "__main__":
