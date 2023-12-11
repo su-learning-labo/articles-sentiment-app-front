@@ -8,3 +8,6 @@ requests
 opencv-python
 numpy
 pillow
+spacy
+ginza
+nlplot

@@ -1,16 +1,20 @@
-import calendar
+import numpy as np
 import pandas as pd
 import streamlit as st
-import requests
-from datetime import datetime as dt
-from collections import Counter
-from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import seaborn as sns
 import japanize_matplotlib
-from PIL import Image
-import numpy as np
 
+import requests
+import spacy
+from spacy import displacy
+import ginza
+import ja_ginza
+
+import calendar
+from datetime import datetime as dt
+import datetime
+import nlplot
 
 # 定数
 BASE_URL_PRODUCTION = 'https://articles-sentiment-app-back.onrender.com'
@@ -20,13 +24,7 @@ API_ENDPOINTS = {
     'sentiments': '/sentiments',
     'analyze_text': '/analyze-text/',
     'extract_nouns': '/extract-nouns/',
-}
-WORDCLOUD_MASK = {
-    '正方形': 'lens',
-    'いいね': 'good',
-    '日本地図': 'japanesemap',
-    'ゲッコー': 'tokage',
-    'メンフクロウ': 'menfukurou',
+    'create_wakati': '/wakati/'
 }
 
 
@@ -55,6 +53,7 @@ def api_request(endpoint, method='get', data=None):
         return response.json()
 
 
+@st.cache_data
 def get_merged_data():
     article_data = pd.DataFrame(api_request('articles'))
     sentiment_data = pd.DataFrame(api_request('sentiments'))
@@ -62,6 +61,10 @@ def get_merged_data():
     df = df.filter([
         'title', 'description', 'url', 'published_at', 'source_name', 'sentiment', 'score'
     ])
+    df['published_at'] = pd.to_datetime(df['published_at']).dt.date
+    df['year'] = df['published_at'].apply(lambda x: x.year).astype('str')
+    df['month'] = df['published_at'].apply(lambda x: x.month).astype('str')
+    df['day_of_week'] = df['published_at'].apply(lambda x: calendar.weekday(x.year, x.month, x.day))
     return df
 
 
@@ -80,21 +83,21 @@ def extract_first_paragraph(text):
         return text[:100]
 
 
-# WordCloud
-def get_wordcloud(text, mask='レンズ'):
-    mask_path = f'static/img/{WORDCLOUD_MASK[mask]}.png'
-    mask_array = np.array(Image.open(mask_path))
-    wordcloud = WordCloud(
-        background_color='white',
-        font_path='static/Sawarabi_Gothic/SawarabiGothic-Regular.ttf',
-        mask=mask_array,
-        max_words=100,
-        height=200
-    ).generate_from_frequencies(text)
-    fig, axes = plt.subplots(figsize=(5, 3))
-    plt.imshow(wordcloud, interpolation='bilinear')
-    plt.axis('off')
-    return fig
+def dependency_analysis(text):
+
+    doc = nlp(text)
+    dependencies = []
+    for token in doc:
+        dependencies.append({
+            'text': token.text,
+            'lemma': token.lemma_,
+            'pos': token.pos_,
+            'tag': token.tag_,
+            'dep': token.dep_,
+            'head_text': token.head.text,
+            'head_pos': token.head.pos_
+        })
+    return dependencies
 
 
 # streamlitメインアプリ
@@ -117,10 +120,6 @@ def main():
 
     # データの取得と前処理
     df = get_merged_data()
-    df['published_at'] = pd.to_datetime(df['published_at']).dt.date
-    df['year'] = df['published_at'].apply(lambda x: x.year).astype('str')
-    df['month'] = df['published_at'].apply(lambda x: x.month).astype('str')
-    df['day_of_week'] = df['published_at'].apply(lambda x: calendar.weekday(x.year, x.month, x.day))
 
     # 出力条件設定 (サイドバー）
     st.sidebar.header('出力条件設定')
@@ -175,7 +174,7 @@ def main():
         head_con.subheader('データサマリー')
         col1, col2, col3, col4, col5 = head_con.columns([1, 1, 1, 1, 3], gap='large')
 
-        col1.metric(label='## Total Articles', value=f'{total_news} 件')
+        col1.metric(label='Total Articles', value=f'{total_news} 件')
         col2.metric(label='Positive Rate', value='{:.1%}'.format(positeve_rate))
         col3.metric(label='Neutral Rate', value='{:.1%}'.format(neutral_rate))
         col4.metric(label='Negative Rate', value='{:.1%}'.format(negative_rate))
@@ -240,8 +239,7 @@ def main():
         plt.tight_layout()
         st.pyplot(fig)
 
-
-
+        st.write('---')
         # 一覧データフレーム
         st.subheader('記事一覧')
         st.dataframe(df.set_index('published_at'))
@@ -249,102 +247,150 @@ def main():
     # ここから個別の記事分析・可視化
     if session_state.views_selector:
 
-        # セッション状態の確認
-        if st.sidebar.button('データを表示', use_container_width=True):
-            session_state.selected_option_btn = True
+        date_list = df['published_at'].apply(lambda x: x.strftime('%Y/%m/%d')).unique().tolist()
 
-        if session_state.selected_option_btn:
+        # セッション状態の確認
+        if session_state.views_selector:
+
+            st.sidebar.write('')
+            select_analysis = st.sidebar.selectbox(
+                '可視化方法を選択してください',
+                options=['係り受け分析', 'ベクトル化', 'ワードクラウド', 'ツリーマップ', '共起ネットワーク',
+                         'サンバースト']
+            )
+
+            # 対象期間の表示
+            st.sidebar.write('')
+            date_selector = st.sidebar.date_input(
+                '対象とする日付を選択してください',
+                value=datetime.date(2023, 11, 10),
+                min_value=min_date,
+                max_value=dt.today()
+            )
+
             # データの取得
             st.write('')
+            df = get_merged_data()
+            target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
+            target_df = target_df.query('published_at == @date_selector')
 
-            df['title'] = df['title'].str.split('-').str[0].str.split('|').str[0]
+            st.sidebar.write('')
 
-            negative_df = df.query('sentiment == "negative"')
-            positive_df = df.query('sentiment == "positive"')
+            # 分析対象の記事idを選択させる
+            id_selector = st.sidebar.slider(
+                '記事IDを選択してください',
+                target_df.index.values.tolist()[0],
+                target_df.index.values.tolist()[-1],
+                (target_df.index.values.tolist()[0], target_df.index.values.tolist()[2])
+            )
+            mask = [i for i in range(id_selector[0], id_selector[1]+1)]
+            target_df = target_df[target_df.index.isin(mask)]
+
+            if target_df is not None:
+                st.write(f'## 記事一覧 ({target_df.shape[0]} 件)')
+                st.caption(f'{date_selector.strftime("%Y年%m月%d日")} から抽出した {target_df.shape[0]} 件')
+                st.dataframe(target_df)
+                target_df['title'] = target_df['title'].str.split('-').str[0].str.split('|').str[0]
+            else:
+                st.error("Sorry, failed to retrieve article. Please select another date.")
+
+            negative_df = target_df.query('sentiment == "negative"')
+            positive_df = target_df.query('sentiment == "positive"')
             negative_cnt = negative_df.groupby(['published_at']).count()['sentiment']
             positive_cnt = positive_df.groupby(['published_at']).count()['sentiment']
 
-            # 情報掲載 - サイドバー
-            with st.sidebar:
-                st.write('---')
-                st.subheader('< info >')
-                st.write(f'記事数: {df.shape[0]} 件')
-                st.write(f"- ポジティブ: {df[df['sentiment']=='positive'].shape[0]} 件")
-                st.write(f"- ネガティブ: {df[df['sentiment']=='negative'].shape[0]} 件")
-                st.write(f"- ニュートラル: {df[df['sentiment']=='neutral'].shape[0]} 件")
+            selected_option_btn = st.sidebar.button(
+                '解析実行',
+                type='primary',
+                use_container_width=True
+            )
 
-            st.write('')
-            st.sidebar.write('---')
-            st.sidebar.write('データを確認のうえ、実行してください')
-            # セッション状態の確認
-            if st.sidebar.button('集計処理を実行', use_container_width=True):
+            if selected_option_btn:
                 session_state.selected_option_btn = True
 
             if session_state.selected_option_btn:
 
-                # テキスト抽出
-                first_paragraphs = df['description'].apply(extract_first_paragraph)
+                # 個別記事の可視化
+                st.write('## 係り受け分析')
 
-                # 抽出した段落を結合
-                combined_text = ' '.join(first_paragraphs)[:1000]
+                nlp = spacy.load('ja_ginza')
+                ginza.set_split_mode(nlp, 'C')
+                target_list = target_df[target_df.index == mask]['description'].tolist()
 
-                # グラフ（割合）
-                st.write('## 可視化フィールド')
-                tab1, tab2, tab3 = st.tabs(['グラフ', 'テキスト抽出', 'ワードクラウド'])
-                with tab1:
-                    # ヒストグラム（密度関数）
-                    st.write('-- ヒストグラム --')
-                    subset = df.filter(['published_at', 'sentiment', 'score'])
+                result = []
+                doc = nlp(target_list[0])
+                result = []
+                for sent in doc.sents:
+                    for token in sent:
+                        st.write(token.text + ' ← ' + token.head.text + ', ' + token.dep_)
 
-                    fig = plt.figure(figsize=(10, 4))
-                    nega = subset['sentiment'] == 'negative'
-                    posi = subset['sentiment'] == 'positive'
-                    sns.distplot(subset[nega]['score'], label='negative')
-                    sns.distplot(subset[posi]['score'], label='positive')
-                    plt.legend()
-                    st.pyplot(fig)
+                dep_svg = displacy.render(doc, style='dep', jupyter=False)
+                st.image(dep_svg, width=900, use_column_width=True)
 
-                    # 推移
-                    st.write('')
-                    st.write('-- 時系列変化 --')
-                    fig_plot = plt.figure(figsize=(10, 4))
-                    plt.plot(negative_cnt, label='negative_articles')
-                    plt.plot(positive_cnt, label='positive_articles')
-                    plt.legend()
-                    st.pyplot(fig_plot)
 
-                with tab2:
-                    body_left, body_right = st.columns([1, 1])
-                    body_left.caption('<原文>')
-                    body_left.write(combined_text)
+                # st.write(docs)
+                # target_df['analyze_text'] = target_df.apply(lambda x: api_request('analyze_text', method='post', data={'text': x['description']}), axis=1)
+                # st.write(pd.DataFrame(df_analyze['tokens']))
+                # npt = nlplot.NLPlot(df_tokens, target_col='description')
 
-                    # テキスト抽出と分析
-                    body_right.caption('<テキスト抽出と分類>')
-                    analyze_text = api_request('analyze_text', method='post', data={'text': combined_text})
-                    df_tokens = pd.DataFrame(analyze_text['tokens'])
-                    df_tokens.set_index('token_no', inplace=True)
-                    body_right.dataframe(df_tokens)
+                # treemap
+                # fig_tree = npt.treemap(
+                #     title='Tree of Most Common Words',
+                #     ngram=1,
+                #     top_n=30,
+                #     #    stopwords=stopwords,  #前処置にて除去しているため適用していない
+                # )
+                # st.plotly_chart(fig_tree, use_container_width=True, sharing='streamlit')
 
-                with tab3:
-                    wc_select = st.selectbox(
-                        'ワードクラウドの出力イメージ選択',
-                        options=WORDCLOUD_MASK,
-                    )
 
-                    # ワードクラウド
-                    nouns = api_request('extract_nouns', method='post', data={'text': combined_text})['nouns']
-
-                    # 除外するキーワード指定
-                    exclude_words = [
-                        '年', '月', '日', '時', '大', '週間', 'ｋｍ', 'さん', '%', '％', 'さま', '位', 'nolink', '米'
-                    ]
-                    filtered_nouns = [noun for noun in nouns if noun not in exclude_words]
-                    words_counts = Counter(filtered_nouns)
-
-                    st.caption('<ワードクラウドによる可視化>')
-                    col_left, col_center, col_right = st.columns([.1, .8, .1])
-                    col_center.pyplot(get_wordcloud(words_counts, wc_select))
-
+                # tab1, tab2, tab3 = st.tabs(['グラフ', 'テキスト抽出', 'ワードクラウド'])
+                # with tab1:
+                #     # ヒストグラム（密度関数）
+                #     st.write('-- ヒストグラム --')
+                #     subset = target_df.filter(['published_at', 'sentiment', 'score'])
+                #
+                #     fig = plt.figure(figsize=(10, 4))
+                #     nega = subset['sentiment'] == 'negative'
+                #     posi = subset['sentiment'] == 'positive'
+                #     sns.distplot(subset[nega]['score'], label='negative')
+                #     sns.distplot(subset[posi]['score'], label='positive')
+                #     plt.legend()
+                #     st.pyplot(fig)
+                #
+                # with tab2:
+                #     npt = nlplot.NLPlot(target_df, target_col='description')
+                #
+                #     # top_nで頻出上位単語, min_freqで頻出下位単語を指定できる
+                #     stopwords = npt.get_stopword(top_n=2, min_freq=0)  # 前処置にて除去しているため適用していない
+                #
+                #     fig_unigram = npt.bar_ngram(
+                #         title='uni-gram',
+                #         xaxis_label='word_count',
+                #         yaxis_label='word',
+                #         ngram=1,
+                #         top_n=50,
+                #         width=800,
+                #         height=1100,
+                #         color=None,
+                #         horizon=True,
+                #         stopwords=stopwords,
+                #         verbose=False,
+                #         save=False,
+                #     )
+                #     fig_unigram.show()
+                #
+                #     body_left, body_right = st.columns([1, 1])
+                #     body_left.caption('<原文>')
+                #     body_left.write(combined_text)
+                #
+                #     # テキスト抽出と分析
+                #     body_right.caption('<テキスト抽出と分類>')
+                #     analyze_text = api_request('analyze_text', method='post', data={'text': combined_text})
+                #     df_tokens = pd.DataFrame(analyze_text['tokens'])
+                #     df_tokens.set_index('token_no', inplace=True)
+                #     body_right.dataframe(df_tokens)
+                #
+                #
 
 if __name__ == "__main__":
     main()
