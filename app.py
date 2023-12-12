@@ -1,3 +1,5 @@
+import io
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -23,8 +25,6 @@ API_ENDPOINTS = {
     'articles': '/articles/',
     'sentiments': '/sentiments',
     'analyze_text': '/analyze-text/',
-    'extract_nouns': '/extract-nouns/',
-    'create_wakati': '/wakati/'
 }
 
 
@@ -83,21 +83,13 @@ def extract_first_paragraph(text):
         return text[:100]
 
 
-def dependency_analysis(text):
+nlp = spacy.load('ja_ginza')
 
+
+def analyze_text(text):
     doc = nlp(text)
-    dependencies = []
-    for token in doc:
-        dependencies.append({
-            'text': token.text,
-            'lemma': token.lemma_,
-            'pos': token.pos_,
-            'tag': token.tag_,
-            'dep': token.dep_,
-            'head_text': token.head.text,
-            'head_pos': token.head.pos_
-        })
-    return dependencies
+    ginza.set_split_mode(nlp, 'C')
+    return ' '.join([token.lemma_ for token in doc if token.pos_ != 'ADP'])
 
 
 # streamlitメインアプリ
@@ -273,6 +265,7 @@ def main():
             df = get_merged_data()
             target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
             target_df = target_df.query('published_at == @date_selector')
+            target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
 
             st.sidebar.write('')
 
@@ -310,11 +303,107 @@ def main():
 
             if session_state.selected_option_btn:
 
-                # 個別記事の可視化
-                st.write('## 係り受け分析')
+                with open('static/stopwords.txt') as f:
+                    stopwords_list = f.read().splitlines()
 
-                nlp = spacy.load('ja_ginza')
-                ginza.set_split_mode(nlp, 'C')
+                st.write(stopwords_list)
+                # 個別記事の可視化
+                npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+
+                # st.write(stopwords)
+                fig_unigram = npt.bar_ngram(
+                    title='N-gram bar chart',
+                    xaxis_label='word_count',
+                    yaxis_label='word',
+                    ngram=1,
+                    top_n=50,
+                    width=400,
+                    height=800,
+                    color=None,
+                    horizon=True,
+                    stopwords=stopwords_list,
+                    verbose=False,
+                    save=False
+                )
+
+                st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
+
+                # N-gram tree Map
+                fig_treemap = npt.treemap(
+                    title='Tree map',
+                    ngram=1,
+                    top_n=50,
+                    width=1300,
+                    height=600,
+                    stopwords=stopwords_list,
+                    verbose=False,
+                    save=False
+                )
+
+                st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
+
+                # 単語数の分布
+                fig_histgram = npt.word_distribution(
+                    title='word distribution',
+                    xaxis_label='count',
+                    yaxis_label='',
+                    width=1000,
+                    height=500,
+                    color=None,
+                    template='plotly',
+                    bins=None,
+                    save=False
+                )
+
+                st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
+
+                # Co-occurrence networks
+                npt.build_graph(stopwords=stopwords_list, min_edge_frequency=1)
+
+                fig_co_network = npt.co_network(
+                    title='Co-occurrence network',
+                    sizing=100,
+                    node_size='adjacency_frequency',
+                    color_palette='hls',
+                    width=1100,
+                    height=700,
+                    save=False
+                )
+                st.plotly_chart(fig_co_network, use_container_width=True, sharing='streamlit')
+
+                # sunburst chart
+                fig_sunburst = npt.sunburst(
+                    title='sunburst chart',
+                    colorscale=True,
+                    color_continuous_scale='Oryel',
+                    width=1000,
+                    height=800,
+                    save=False
+                )
+                st.plotly_chart(fig_sunburst, use_container_width=True, sharing='streamlit')
+
+                # wordcloud
+                fig_wc = npt.wordcloud(
+                    # width=1000,
+                    # height=600,
+                    max_words=300,
+                    max_font_size=300,
+                    colormap='tab20_r',
+                    stopwords=stopwords_list,
+                    mask_file='static/img/japanesemap.png',
+                )
+
+                plt.figure(figsize=(10, 7))
+                plt.imshow(fig_wc)
+                plt.axis('off')
+
+                buf = io.BytesIO()
+                plt.savefig(buf, format='png')
+                buf.seek(0)
+                st.image(buf, use_column_width=True)
+
+                # 係り受け
+                st.write('## 係り受け分析')
                 target_list = target_df[target_df.index == mask]['description'].tolist()
 
                 result = []
@@ -327,70 +416,15 @@ def main():
                 dep_svg = displacy.render(doc, style='dep', jupyter=False)
                 st.image(dep_svg, width=900, use_column_width=True)
 
-
-                # st.write(docs)
+                st.write(doc)
                 # target_df['analyze_text'] = target_df.apply(lambda x: api_request('analyze_text', method='post', data={'text': x['description']}), axis=1)
                 # st.write(pd.DataFrame(df_analyze['tokens']))
                 # npt = nlplot.NLPlot(df_tokens, target_col='description')
 
-                # treemap
-                # fig_tree = npt.treemap(
-                #     title='Tree of Most Common Words',
-                #     ngram=1,
-                #     top_n=30,
-                #     #    stopwords=stopwords,  #前処置にて除去しているため適用していない
-                # )
-                # st.plotly_chart(fig_tree, use_container_width=True, sharing='streamlit')
 
 
-                # tab1, tab2, tab3 = st.tabs(['グラフ', 'テキスト抽出', 'ワードクラウド'])
-                # with tab1:
-                #     # ヒストグラム（密度関数）
-                #     st.write('-- ヒストグラム --')
-                #     subset = target_df.filter(['published_at', 'sentiment', 'score'])
-                #
-                #     fig = plt.figure(figsize=(10, 4))
-                #     nega = subset['sentiment'] == 'negative'
-                #     posi = subset['sentiment'] == 'positive'
-                #     sns.distplot(subset[nega]['score'], label='negative')
-                #     sns.distplot(subset[posi]['score'], label='positive')
-                #     plt.legend()
-                #     st.pyplot(fig)
-                #
-                # with tab2:
-                #     npt = nlplot.NLPlot(target_df, target_col='description')
-                #
-                #     # top_nで頻出上位単語, min_freqで頻出下位単語を指定できる
-                #     stopwords = npt.get_stopword(top_n=2, min_freq=0)  # 前処置にて除去しているため適用していない
-                #
-                #     fig_unigram = npt.bar_ngram(
-                #         title='uni-gram',
-                #         xaxis_label='word_count',
-                #         yaxis_label='word',
-                #         ngram=1,
-                #         top_n=50,
-                #         width=800,
-                #         height=1100,
-                #         color=None,
-                #         horizon=True,
-                #         stopwords=stopwords,
-                #         verbose=False,
-                #         save=False,
-                #     )
-                #     fig_unigram.show()
-                #
-                #     body_left, body_right = st.columns([1, 1])
-                #     body_left.caption('<原文>')
-                #     body_left.write(combined_text)
-                #
-                #     # テキスト抽出と分析
-                #     body_right.caption('<テキスト抽出と分類>')
-                #     analyze_text = api_request('analyze_text', method='post', data={'text': combined_text})
-                #     df_tokens = pd.DataFrame(analyze_text['tokens'])
-                #     df_tokens.set_index('token_no', inplace=True)
-                #     body_right.dataframe(df_tokens)
-                #
-                #
+
+
 
 if __name__ == "__main__":
     main()
