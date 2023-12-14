@@ -53,7 +53,6 @@ def api_request(endpoint, method='get', data=None):
         return response.json()
 
 
-@st.cache_data
 def get_merged_data():
     article_data = pd.DataFrame(api_request('articles'))
     sentiment_data = pd.DataFrame(api_request('sentiments'))
@@ -117,14 +116,14 @@ def main():
     st.sidebar.header('出力条件設定')
     views_selector = st.sidebar.radio(
         '表示切り替え',
-        options=('トレンド', '個別記事'),
+        options=('トレンド', '個別分析'),
         horizontal=True
     )
 
     # Session_Stateの管理
     if views_selector == 'トレンド':
         session_state.views_selector = False
-    elif views_selector == '個別記事':
+    elif views_selector == '個別分析':
         session_state.views_selector = True
 
     min_date = parse_date(pd.DataFrame(api_request('articles'))['fetched_at'][0])
@@ -160,81 +159,89 @@ def main():
         neutral_rate = neutral_count / total_news
         negative_rate = negative_count / total_news
 
-        # 記事一覧の表示
-        st.write('---')
-        head_con = st.container()
-        head_con.subheader('データサマリー')
-        col1, col2, col3, col4, col5 = head_con.columns([1, 1, 1, 1, 3], gap='large')
+        st.sidebar.write('')
+        show_trends_button = st.sidebar.button(
+            'トレンドを表示',
+            type='secondary',
+        )
 
-        col1.metric(label='Total Articles', value=f'{total_news} 件')
-        col2.metric(label='Positive Rate', value='{:.1%}'.format(positeve_rate))
-        col3.metric(label='Neutral Rate', value='{:.1%}'.format(neutral_rate))
-        col4.metric(label='Negative Rate', value='{:.1%}'.format(negative_rate))
+        if show_trends_button:
 
-        # sentimentの割合帯グラフ用データ
-        cross = pd.crosstab(index=df['sentiment'], columns='rate', normalize=True)
-        fig = plt.figure(figsize=(10, 1))
-        axes = plt.axes()
-        # Stacking the bars horizontally
-        axes.barh('Sentiments', positeve_rate, color='lightseagreen')
-        axes.barh('Sentiments', neutral_rate, left=positeve_rate, color='darkslategray')
-        axes.barh('Sentiments', negative_rate, left=positeve_rate + neutral_rate, color='lightcoral')
+            # 記事一覧の表示
+            st.write('---')
+            head_con = st.container()
+            head_con.subheader('データサマリー')
+            col1, col2, col3, col4, col5 = head_con.columns([1, 1, 1, 1, 3], gap='large')
 
-        # Adding data labels
-        plt.text(positeve_rate / 2, 0, f'Positive: {positeve_rate:.1%}', va='center', ha='center', color='white')
-        plt.text(positeve_rate + neutral_rate / 2, 0, f'Neutral: {neutral_rate:.1%}', va='center', ha='center', color='white')
-        plt.text(positeve_rate + neutral_rate + negative_rate / 2, 0, f'Negative: {negative_rate:.1%}', va='center', ha='center', color='white')
+            col1.metric(label='Total Articles', value=f'{total_news} 件')
+            col2.metric(label='Positive Rate', value='{:.1%}'.format(positeve_rate))
+            col3.metric(label='Neutral Rate', value='{:.1%}'.format(neutral_rate))
+            col4.metric(label='Negative Rate', value='{:.1%}'.format(negative_rate))
 
-        # Hiding the axes
-        plt.axis('off')
+            # sentimentの割合帯グラフ用データ
+            cross = pd.crosstab(index=df['sentiment'], columns='rate', normalize=True)
+            fig = plt.figure(figsize=(10, 1))
+            axes = plt.axes()
+            # Stacking the bars horizontally
+            axes.barh('Sentiments', positeve_rate, color='lightseagreen')
+            axes.barh('Sentiments', neutral_rate, left=positeve_rate, color='darkslategray')
+            axes.barh('Sentiments', negative_rate, left=positeve_rate + neutral_rate, color='lightcoral')
 
-        # Display the horizontal stacked bar chart
-        st.pyplot(fig)
+            # Adding data labels
+            plt.text(positeve_rate / 2, 0, f'Positive: {positeve_rate:.1%}', va='center', ha='center', color='white')
+            plt.text(positeve_rate + neutral_rate / 2, 0, f'Neutral: {neutral_rate:.1%}', va='center', ha='center', color='white')
+            plt.text(positeve_rate + neutral_rate + negative_rate / 2, 0, f'Negative: {negative_rate:.1%}', va='center', ha='center', color='white')
 
-        # ヒストグラム
-        st.write('---')
-        st.subheader('ヒストグラムによる可視化')
-        subset = df.filter(['published_at', 'sentiment', 'score'])
-        negative_col = subset['sentiment'] == 'negative'
-        positive_col = subset['sentiment'] == 'positive'
+            # Hiding the axes
+            plt.axis('off')
 
-        fig = plt.figure(figsize=(10, 5))
-        axes = plt.axes()
-        ax = sns.distplot(a=subset[positive_col]['score'], kde=True, label='Positive')
-        sns.distplot(a=subset[negative_col]['score'], ax=ax, kde=True, label='Negative')
-        plt.legend()
-        st.pyplot(fig)
+            # Display the horizontal stacked bar chart
+            st.pyplot(fig)
 
-        # 時系列変化の表示グラフ
-        st.write('---')
-        st.subheader('時系列での変化')
-        fig = plt.figure(figsize=(10, 5))
-        axes = plt.axes()
-        sns.lineplot(x='published_at', y='score', hue='sentiment', data=df, palette='bright')
-        axes.legend(loc="best")
-        axes.set_xlabel(None)
-        fig.autofmt_xdate(rotation=30)
-        plt.tight_layout()
-        st.pyplot(fig)
+            # ヒストグラム
+            st.write('---')
+            st.subheader('ヒストグラムによる可視化')
+            subset = df.filter(['published_at', 'sentiment', 'score'])
+            negative_col = subset['sentiment'] == 'negative'
+            positive_col = subset['sentiment'] == 'positive'
 
-        st.write('---')
+            fig = plt.figure(figsize=(10, 5))
+            axes = plt.axes()
+            ax = sns.distplot(a=subset[positive_col]['score'], kde=True, label='Positive')
+            sns.distplot(a=subset[negative_col]['score'], ax=ax, kde=True, label='Negative')
+            plt.legend()
+            st.pyplot(fig)
 
-        # 曜日ごとの違いを表示（箱ひげ）
-        st.subheader('曜日ごとの分布')
-        subset = df[['day_of_week', 'sentiment', 'score']]
+            # 時系列変化の表示グラフ
+            st.write('---')
+            st.subheader('時系列での変化')
+            fig = plt.figure(figsize=(10, 5))
+            axes = plt.axes()
+            sns.lineplot(x='published_at', y='score', hue='sentiment', data=df, palette='bright')
+            axes.legend(loc="best")
+            axes.set_xlabel(None)
+            fig.autofmt_xdate(rotation=30)
+            plt.tight_layout()
+            st.pyplot(fig)
 
-        fig, axes = plt.subplots()
-        sns.boxplot(data=subset, x='day_of_week', y='score', hue='sentiment', palette='pastel', linewidth=0.7)
-        axes.legend(loc="best")
-        axes.set_xticklabels(['月', '火', '水', '木', '金', '土', '日'])
-        axes.set_xlabel(None)
-        plt.tight_layout()
-        st.pyplot(fig)
+            st.write('---')
 
-        st.write('---')
-        # 一覧データフレーム
-        st.subheader('記事一覧')
-        st.dataframe(df.set_index('published_at'))
+            # 曜日ごとの違いを表示（箱ひげ）
+            st.subheader('曜日ごとの分布')
+            subset = df[['day_of_week', 'sentiment', 'score']]
+
+            fig, axes = plt.subplots()
+            sns.boxplot(data=subset, x='day_of_week', y='score', hue='sentiment', palette='pastel', linewidth=0.7)
+            axes.legend(loc="best")
+            axes.set_xticklabels(['月', '火', '水', '木', '金', '土', '日'])
+            axes.set_xlabel(None)
+            plt.tight_layout()
+            st.pyplot(fig)
+
+            st.write('---')
+            # 一覧データフレーム
+            st.subheader('記事一覧')
+            st.dataframe(df.set_index('published_at'))
 
     # ここから個別の記事分析・可視化
     if session_state.views_selector:
@@ -247,183 +254,210 @@ def main():
             st.sidebar.write('')
             select_analysis = st.sidebar.selectbox(
                 '可視化方法を選択してください',
-                options=['係り受け分析', 'ベクトル化', 'ワードクラウド', 'ツリーマップ', '共起ネットワーク',
-                         'サンバースト']
+                options=[
+                    '可視化方法を選択してください,'
+                    '共起ネットワーク',
+                    'サンバースト・チャート',
+                    'ベクトル化',
+                    'ワードクラウド',
+                    'ツリーマップ',
+                    '係り受け分析',
+                ]
             )
 
-            # 対象期間の表示
-            st.sidebar.write('')
-            date_selector = st.sidebar.date_input(
-                '対象とする日付を選択してください',
-                value=datetime.date(2023, 11, 10),
-                min_value=min_date,
-                max_value=dt.today()
-            )
+            if select_analysis in ['共起ネットワーク', 'サンバースト・チャート']:
 
-            # データの取得
-            st.write('')
-            df = get_merged_data()
-            target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
-            target_df = target_df.query('published_at == @date_selector')
-            target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
-
-            st.sidebar.write('')
-
-            # 分析対象の記事idを選択させる
-            id_selector = st.sidebar.slider(
-                '記事IDを選択してください',
-                target_df.index.values.tolist()[0],
-                target_df.index.values.tolist()[-1],
-                (target_df.index.values.tolist()[0], target_df.index.values.tolist()[2])
-            )
-            mask = [i for i in range(id_selector[0], id_selector[1]+1)]
-            target_df = target_df[target_df.index.isin(mask)]
-
-            if target_df is not None:
-                st.write(f'## 記事一覧 ({target_df.shape[0]} 件)')
-                st.caption(f'{date_selector.strftime("%Y年%m月%d日")} から抽出した {target_df.shape[0]} 件')
-                st.dataframe(target_df)
-                target_df['title'] = target_df['title'].str.split('-').str[0].str.split('|').str[0]
-            else:
-                st.error("Sorry, failed to retrieve article. Please select another date.")
-
-            negative_df = target_df.query('sentiment == "negative"')
-            positive_df = target_df.query('sentiment == "positive"')
-            negative_cnt = negative_df.groupby(['published_at']).count()['sentiment']
-            positive_cnt = positive_df.groupby(['published_at']).count()['sentiment']
-
-            selected_option_btn = st.sidebar.button(
-                '解析実行',
-                type='primary',
-                use_container_width=True
-            )
-
-            if selected_option_btn:
-                session_state.selected_option_btn = True
-
-            if session_state.selected_option_btn:
+                # データの取得
+                df = get_merged_data()
+                target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
 
                 with open('static/stopwords.txt') as f:
                     stopwords_list = f.read().splitlines()
 
-                st.write(stopwords_list)
-                # 個別記事の可視化
+                # 対象の日付の絞りこみ
+                st.sidebar.write('')
+                date_selector = st.sidebar.date_input(
+                    '対象の日付を選択してください',
+                    datetime.date(2023, 11, 10)
+                )
+
+                target_df = target_df.query('published_at == @date_selector')
+
+                min_index_value = target_df.index[0]
+                max_index_value = target_df.index[-1]
+                id_selector = st.sidebar.number_input(
+                    '記事IDを選択してください',
+                    min_value=min_index_value,
+                    max_value=max_index_value,
+                )
+
+                # フィルタリング
+                target_df = target_df[target_df.index == id_selector]
+                st.write('### 対象記事')
+                st.markdown(target_df["description"].values[0])
+
+                # 分析対象の記事idを選択させる
+                target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
+
+                # 個別分析の可視化
                 npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
 
-                # st.write(stopwords)
-                fig_unigram = npt.bar_ngram(
-                    title='N-gram bar chart',
-                    xaxis_label='word_count',
-                    yaxis_label='word',
-                    ngram=1,
-                    top_n=50,
-                    width=400,
-                    height=800,
-                    color=None,
-                    horizon=True,
-                    stopwords=stopwords_list,
-                    verbose=False,
-                    save=False
+                if select_analysis == '共起ネットワーク':
+                    # Co-occurrence networks
+                    npt.build_graph(stopwords=stopwords_list, min_edge_frequency=1)
+
+                    fig_co_network = npt.co_network(
+                        title='Co-occurrence network',
+                        sizing=100,
+                        node_size='adjacency_frequency',
+                        color_palette='hls',
+                        width=1100,
+                        height=700,
+                        save=False
+                    )
+                    st.plotly_chart(fig_co_network, use_container_width=True, sharing='streamlit')
+
+                elif select_analysis == 'サンバースト・チャート':
+
+                    # sunburst chart
+                    fig_sunburst = npt.sunburst(
+                        title='sunburst chart',
+                        colorscale=True,
+                        color_continuous_scale='Oryel',
+                        width=1000,
+                        height=800,
+                        save=False
+                    )
+                    st.plotly_chart(fig_sunburst, use_container_width=True, sharing='streamlit')
+
+
+            elif select_analysis in ['ベクトル化',  'ワードクラウド', 'ツリーマップ']:
+
+                # 対象期間の表示
+                st.sidebar.write('')
+                date_selector = st.sidebar.date_input(
+                    '対象とする日付を選択してください',
+                    value=datetime.date(2023, 11, 10),
+                    min_value=min_date,
+                    max_value=dt.today()
                 )
 
-                st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
+                # データの取得
+                st.write('')
+                df = get_merged_data()
+                target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
+                target_df = target_df.query('published_at == @date_selector')
+                target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
 
-                # N-gram tree Map
-                fig_treemap = npt.treemap(
-                    title='Tree map',
-                    ngram=1,
-                    top_n=50,
-                    width=1300,
-                    height=600,
-                    stopwords=stopwords_list,
-                    verbose=False,
-                    save=False
+                st.sidebar.write('')
+
+                # 分析対象の記事idを選択させる
+                id_selector = st.sidebar.slider(
+                    '記事IDを選択してください',
+                    target_df.index.values.tolist()[0],
+                    target_df.index.values.tolist()[-1],
+                    (target_df.index.values.tolist()[0], target_df.index.values.tolist()[2])
+                )
+                mask = [i for i in range(id_selector[0], id_selector[1]+1)]
+                target_df = target_df[target_df.index.isin(mask)]
+
+                if target_df is not None:
+                    st.write(f'## 記事一覧 ({target_df.shape[0]} 件)')
+                    st.caption(f'{date_selector.strftime("%Y年%m月%d日")} から抽出した {target_df.shape[0]} 件')
+                    st.dataframe(target_df)
+                    target_df['title'] = target_df['title'].str.split('-').str[0].str.split('|').str[0]
+                else:
+                    st.error("Sorry, failed to retrieve article. Please select another date.")
+
+                negative_df = target_df.query('sentiment == "negative"')
+                positive_df = target_df.query('sentiment == "positive"')
+                negative_cnt = negative_df.groupby(['published_at']).count()['sentiment']
+                positive_cnt = positive_df.groupby(['published_at']).count()['sentiment']
+
+                selected_option_btn = st.sidebar.button(
+                    '解析実行',
+                    type='primary',
+                    use_container_width=True
                 )
 
-                st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
+                if selected_option_btn:
+                    session_state.selected_option_btn = True
 
-                # 単語数の分布
-                fig_histgram = npt.word_distribution(
-                    title='word distribution',
-                    xaxis_label='count',
-                    yaxis_label='',
-                    width=1000,
-                    height=500,
-                    color=None,
-                    template='plotly',
-                    bins=None,
-                    save=False
-                )
+                if session_state.selected_option_btn:
 
-                st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
+                    with open('static/stopwords.txt') as f:
+                        stopwords_list = f.read().splitlines()
 
-                # Co-occurrence networks
-                npt.build_graph(stopwords=stopwords_list, min_edge_frequency=1)
-
-                fig_co_network = npt.co_network(
-                    title='Co-occurrence network',
-                    sizing=100,
-                    node_size='adjacency_frequency',
-                    color_palette='hls',
-                    width=1100,
-                    height=700,
-                    save=False
-                )
-                st.plotly_chart(fig_co_network, use_container_width=True, sharing='streamlit')
-
-                # sunburst chart
-                fig_sunburst = npt.sunburst(
-                    title='sunburst chart',
-                    colorscale=True,
-                    color_continuous_scale='Oryel',
-                    width=1000,
-                    height=800,
-                    save=False
-                )
-                st.plotly_chart(fig_sunburst, use_container_width=True, sharing='streamlit')
-
-                # wordcloud
-                fig_wc = npt.wordcloud(
-                    # width=1000,
-                    # height=600,
-                    max_words=300,
-                    max_font_size=300,
-                    colormap='tab20_r',
-                    stopwords=stopwords_list,
-                    mask_file='static/img/japanesemap.png',
-                )
-
-                plt.figure(figsize=(10, 7))
-                plt.imshow(fig_wc)
-                plt.axis('off')
-
-                buf = io.BytesIO()
-                plt.savefig(buf, format='png')
-                buf.seek(0)
-                st.image(buf, use_column_width=True)
-
-                # 係り受け
-                st.write('## 係り受け分析')
-                target_list = target_df[target_df.index == mask]['description'].tolist()
-
-                result = []
-                doc = nlp(target_list[0])
-                result = []
-                for sent in doc.sents:
-                    for token in sent:
-                        st.write(token.text + ' ← ' + token.head.text + ', ' + token.dep_)
-
-                dep_svg = displacy.render(doc, style='dep', jupyter=False)
-                st.image(dep_svg, width=900, use_column_width=True)
-
-                st.write(doc)
-                # target_df['analyze_text'] = target_df.apply(lambda x: api_request('analyze_text', method='post', data={'text': x['description']}), axis=1)
-                # st.write(pd.DataFrame(df_analyze['tokens']))
-                # npt = nlplot.NLPlot(df_tokens, target_col='description')
+                    st.write(stopwords_list)
+                    # 個別分析の可視化
+                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
 
 
+                    fig_unigram = npt.bar_ngram(
+                        title='N-gram bar chart',
+                        xaxis_label='word_count',
+                        yaxis_label='word',
+                        ngram=1,
+                        top_n=50,
+                        width=400,
+                        height=800,
+                        color=None,
+                        horizon=True,
+                        stopwords=stopwords_list,
+                        verbose=False,
+                        save=False
+                    )
 
+                    st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
 
+                    # N-gram tree Map
+                    fig_treemap = npt.treemap(
+                        title='Tree map',
+                        ngram=1,
+                        top_n=50,
+                        width=1300,
+                        height=600,
+                        stopwords=stopwords_list,
+                        verbose=False,
+                        save=False
+                    )
+
+                    st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
+
+                    # 単語数の分布
+                    fig_histgram = npt.word_distribution(
+                        title='word distribution',
+                        xaxis_label='count',
+                        yaxis_label='',
+                        width=1000,
+                        height=500,
+                        color=None,
+                        template='plotly',
+                        bins=None,
+                        save=False
+                    )
+
+                    st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
+
+                    # wordcloud
+                    fig_wc = npt.wordcloud(
+                        # width=1000,
+                        # height=600,
+                        max_words=300,
+                        max_font_size=300,
+                        colormap='tab20_r',
+                        stopwords=stopwords_list,
+                        mask_file='static/img/japanesemap.png',
+                    )
+
+                    plt.figure(figsize=(10, 7))
+                    plt.imshow(fig_wc)
+                    plt.axis('off')
+
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png')
+                    buf.seek(0)
+                    st.image(buf, use_column_width=True)
 
 
 if __name__ == "__main__":
