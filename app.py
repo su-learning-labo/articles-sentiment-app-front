@@ -255,17 +255,18 @@ def main():
             select_analysis = st.sidebar.selectbox(
                 '可視化方法を選択してください',
                 options=[
-                    '可視化方法を選択してください,'
-                    '共起ネットワーク',
-                    'サンバースト・チャート',
-                    'ベクトル化',
-                    'ワードクラウド',
-                    'ツリーマップ',
+                    '可視化方法を選択してください',
+                    'co-occurrence networks',
+                    'sunburst chart',
+                    'uni-gram chart',
+                    'histgram',
+                    'wordcloud',
+                    'tree map',
                     '係り受け分析',
                 ]
             )
 
-            if select_analysis in ['共起ネットワーク', 'サンバースト・チャート']:
+            if select_analysis in ['co-occurrence networks', 'sunburst chart']:
 
                 # データの取得
                 df = get_merged_data()
@@ -274,15 +275,17 @@ def main():
                 with open('static/stopwords.txt') as f:
                     stopwords_list = f.read().splitlines()
 
-                # 対象の日付の絞りこみ
+                # 日付の選択
                 st.sidebar.write('')
                 date_selector = st.sidebar.date_input(
                     '対象の日付を選択してください',
                     datetime.date(2023, 11, 10)
                 )
 
+                # 日付フィルタリング
                 target_df = target_df.query('published_at == @date_selector')
 
+                # 記事インデックス番号選択
                 min_index_value = target_df.index[0]
                 max_index_value = target_df.index[-1]
                 id_selector = st.sidebar.number_input(
@@ -291,21 +294,21 @@ def main():
                     max_value=max_index_value,
                 )
 
-                # フィルタリング
+                # IDフィルタリング
                 target_df = target_df[target_df.index == id_selector]
-                st.write('### 対象記事')
-                st.markdown(target_df["description"].values[0])
 
                 # 分析対象の記事idを選択させる
                 target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
 
+                st.write('### 対象記事')
+                st.markdown(target_df["description"].values[0])
+
                 # 個別分析の可視化
                 npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+                npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
 
-                if select_analysis == '共起ネットワーク':
+                if select_analysis == 'co-occurrence networks':
                     # Co-occurrence networks
-                    npt.build_graph(stopwords=stopwords_list, min_edge_frequency=1)
-
                     fig_co_network = npt.co_network(
                         title='Co-occurrence network',
                         sizing=100,
@@ -317,7 +320,10 @@ def main():
                     )
                     st.plotly_chart(fig_co_network, use_container_width=True, sharing='streamlit')
 
-                elif select_analysis == 'サンバースト・チャート':
+                if select_analysis == 'sunburst chart':
+
+                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+                    npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
 
                     # sunburst chart
                     fig_sunburst = npt.sunburst(
@@ -330,8 +336,14 @@ def main():
                     )
                     st.plotly_chart(fig_sunburst, use_container_width=True, sharing='streamlit')
 
+            if select_analysis in ['uni-gram chart', 'histgram', 'wordcloud', 'tree map']:
 
-            elif select_analysis in ['ベクトル化',  'ワードクラウド', 'ツリーマップ']:
+                # データの取得
+                df = get_merged_data()
+                target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
+
+                with open('static/stopwords.txt') as f:
+                    stopwords_list = f.read().splitlines()
 
                 # 対象期間の表示
                 st.sidebar.write('')
@@ -348,6 +360,8 @@ def main():
                 target_df = df[['title', 'description', 'url', 'source_name', 'sentiment', 'score', 'published_at']]
                 target_df = target_df.query('published_at == @date_selector')
                 target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
+
+                npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
 
                 st.sidebar.write('')
 
@@ -388,77 +402,83 @@ def main():
                     with open('static/stopwords.txt') as f:
                         stopwords_list = f.read().splitlines()
 
-                    st.write(stopwords_list)
-                    # 個別分析の可視化
-                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+                    # st.write(stopwords_list)
 
+                    if select_analysis == 'uni-gram chart':
+                        # 個別分析の可視化
+                        npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
 
-                    fig_unigram = npt.bar_ngram(
-                        title='N-gram bar chart',
-                        xaxis_label='word_count',
-                        yaxis_label='word',
-                        ngram=1,
-                        top_n=50,
-                        width=400,
-                        height=800,
-                        color=None,
-                        horizon=True,
-                        stopwords=stopwords_list,
-                        verbose=False,
-                        save=False
-                    )
+                        fig_unigram = npt.bar_ngram(
+                            title='N-gram bar chart',
+                            xaxis_label='word_count',
+                            yaxis_label='word',
+                            ngram=1,
+                            top_n=50,
+                            width=400,
+                            height=800,
+                            color=None,
+                            horizon=True,
+                            stopwords=stopwords_list,
+                            verbose=False,
+                            save=False
+                        )
 
-                    st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
+                        st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
 
-                    # N-gram tree Map
-                    fig_treemap = npt.treemap(
-                        title='Tree map',
-                        ngram=1,
-                        top_n=50,
-                        width=1300,
-                        height=600,
-                        stopwords=stopwords_list,
-                        verbose=False,
-                        save=False
-                    )
+                    if select_analysis == 'tree map':
+                        # N-gram tree Map
+                        fig_treemap = npt.treemap(
+                            title='Tree map',
+                            ngram=1,
+                            top_n=50,
+                            width=1300,
+                            height=600,
+                            stopwords=stopwords_list,
+                            verbose=False,
+                            save=False
+                        )
 
-                    st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
+                        st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
 
-                    # 単語数の分布
-                    fig_histgram = npt.word_distribution(
-                        title='word distribution',
-                        xaxis_label='count',
-                        yaxis_label='',
-                        width=1000,
-                        height=500,
-                        color=None,
-                        template='plotly',
-                        bins=None,
-                        save=False
-                    )
+                    elif  select_analysis == 'histgram':
+                        # 単語数の分布
+                        fig_histgram = npt.word_distribution(
+                            title='word distribution',
+                            xaxis_label='count',
+                            yaxis_label='',
+                            width=1000,
+                            height=500,
+                            color=None,
+                            template='plotly',
+                            bins=None,
+                            save=False
+                        )
 
-                    st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
+                        st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
 
-                    # wordcloud
-                    fig_wc = npt.wordcloud(
-                        # width=1000,
-                        # height=600,
-                        max_words=300,
-                        max_font_size=300,
-                        colormap='tab20_r',
-                        stopwords=stopwords_list,
-                        mask_file='static/img/japanesemap.png',
-                    )
+                    elif select_analysis == 'wordcloud':
+                        # wordcloud
+                        fig_wc = npt.wordcloud(
+                            # width=1000,
+                            # height=600,
+                            max_words=300,
+                            max_font_size=300,
+                            colormap='tab20_r',
+                            stopwords=stopwords_list,
+                            # mask_file='static/img/japanesemap.png',
+                        )
 
-                    plt.figure(figsize=(10, 7))
-                    plt.imshow(fig_wc)
-                    plt.axis('off')
+                        plt.figure(figsize=(10, 7))
+                        plt.imshow(fig_wc)
+                        plt.axis('off')
 
-                    buf = io.BytesIO()
-                    plt.savefig(buf, format='png')
-                    buf.seek(0)
-                    st.image(buf, use_column_width=True)
+                        buf = io.BytesIO()
+                        plt.savefig(buf, format='png')
+                        buf.seek(0)
+                        st.image(buf, use_column_width=True)
 
+            else:
+                st.info('左側のメニューから可視化方法を選択してください')
 
 if __name__ == "__main__":
     main()
