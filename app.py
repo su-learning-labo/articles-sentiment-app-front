@@ -11,7 +11,6 @@ import requests
 import spacy
 from spacy import displacy
 import ginza
-import ja_ginza
 
 import calendar
 from datetime import datetime as dt
