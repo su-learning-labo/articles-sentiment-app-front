@@ -322,8 +322,8 @@ def main():
 
                 if select_analysis == 'sunburst chart':
 
-                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
-                    npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
+                    # npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+                    # npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
 
                     # sunburst chart
                     fig_sunburst = npt.sunburst(

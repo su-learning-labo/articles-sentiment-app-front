@@ -11,3 +11,4 @@ pillow
 spacy
 ginza
 nlplot
+ja-ginza
