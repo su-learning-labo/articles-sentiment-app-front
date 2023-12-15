@@ -10,7 +10,7 @@ import japanize_matplotlib
 import requests
 import spacy
 from spacy import displacy
-import ginza, ja_ginza
+import ginza, ja_ginza_electra
 
 import calendar
 from datetime import datetime as dt
@@ -81,7 +81,7 @@ def extract_first_paragraph(text):
         return text[:100]
 
 
-nlp = spacy.load('ja_ginza')
+nlp = spacy.load('ja_ginza_electra')
 
 
 def analyze_text(text):
