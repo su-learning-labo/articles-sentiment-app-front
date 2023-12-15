@@ -10,7 +10,7 @@ import japanize_matplotlib
 import requests
 import spacy
 from spacy import displacy
-import ginza
+import ginza, ja_ginza
 
 import calendar
 from datetime import datetime as dt
