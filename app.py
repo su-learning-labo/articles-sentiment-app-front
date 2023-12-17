@@ -9,6 +9,7 @@ import japanize_matplotlib
 
 import requests
 import spacy
+# import spacy_streamlit
 from spacy import displacy
 import ginza
 import ja_ginza
@@ -88,7 +89,13 @@ nlp = spacy.load('ja_ginza')
 def analyze_text(text):
     doc = nlp(text)
     ginza.set_split_mode(nlp, 'C')
-    return ' '.join([token.lemma_ for token in doc if token.pos_ != 'ADP'])
+    return ' '.join([token.lemma_ for token in doc if token.pos_ in ['NOUN', 'ADJ']])
+
+
+def text_morpho(text):
+    doc = nlp(text)
+    ginza.set_split_mode(nlp, 'C')
+    return ' '.join([token.text for token in doc])
 
 
 # streamlitメインアプリ
@@ -155,7 +162,7 @@ def main():
         positive_count = df[df['sentiment'] == 'positive']['sentiment'].count()
         negative_count = df[df['sentiment'] == 'negative']['sentiment'].count()
         neutral_count = df[df['sentiment'] == 'neutral']['sentiment'].count()
-        positeve_rate = positive_count / total_news
+        positive_rate = positive_count / total_news
         neutral_rate = neutral_count / total_news
         negative_rate = negative_count / total_news
 
@@ -174,7 +181,7 @@ def main():
             col1, col2, col3, col4, col5 = head_con.columns([1, 1, 1, 1, 3], gap='large')
 
             col1.metric(label='Total Articles', value=f'{total_news} 件')
-            col2.metric(label='Positive Rate', value='{:.1%}'.format(positeve_rate))
+            col2.metric(label='Positive Rate', value='{:.1%}'.format(positive_rate))
             col3.metric(label='Neutral Rate', value='{:.1%}'.format(neutral_rate))
             col4.metric(label='Negative Rate', value='{:.1%}'.format(negative_rate))
 
@@ -183,14 +190,14 @@ def main():
             fig = plt.figure(figsize=(10, 1))
             axes = plt.axes()
             # Stacking the bars horizontally
-            axes.barh('Sentiments', positeve_rate, color='lightseagreen')
-            axes.barh('Sentiments', neutral_rate, left=positeve_rate, color='darkslategray')
-            axes.barh('Sentiments', negative_rate, left=positeve_rate + neutral_rate, color='lightcoral')
+            axes.barh('Sentiments', positive_rate, color='lightseagreen')
+            axes.barh('Sentiments', neutral_rate, left=positive_rate, color='darkslategray')
+            axes.barh('Sentiments', negative_rate, left=positive_rate + neutral_rate, color='lightcoral')
 
             # Adding data labels
-            plt.text(positeve_rate / 2, 0, f'Positive: {positeve_rate:.1%}', va='center', ha='center', color='white')
-            plt.text(positeve_rate + neutral_rate / 2, 0, f'Neutral: {neutral_rate:.1%}', va='center', ha='center', color='white')
-            plt.text(positeve_rate + neutral_rate + negative_rate / 2, 0, f'Negative: {negative_rate:.1%}', va='center', ha='center', color='white')
+            plt.text(positive_rate / 2, 0, f'Positive: {positive_rate:.1%}', va='center', ha='center', color='white')
+            plt.text(positive_rate + neutral_rate / 2, 0, f'Neutral: {neutral_rate:.1%}', va='center', ha='center', color='white')
+            plt.text(positive_rate + neutral_rate + negative_rate / 2, 0, f'Negative: {negative_rate:.1%}', va='center', ha='center', color='white')
 
             # Hiding the axes
             plt.axis('off')
@@ -262,11 +269,11 @@ def main():
                     'histgram',
                     'wordcloud',
                     'tree map',
-                    '係り受け分析',
+                    '係り受け解析',
                 ]
             )
 
-            if select_analysis in ['co-occurrence networks', 'sunburst chart']:
+            if select_analysis == '係り受け解析':
 
                 # データの取得
                 df = get_merged_data()
@@ -298,45 +305,24 @@ def main():
                 target_df = target_df[target_df.index == id_selector]
 
                 # 分析対象の記事idを選択させる
-                target_df['analyzed_text'] = target_df['description'].apply(analyze_text)
+                target_df['analyzed_text'] = target_df['description'].apply(text_morpho)
+
+                nlp_vi = spacy.load('en_core_web_md')
+                doc = nlp_vi(target_df['analyzed_text'].values[0])
 
                 st.write('### 対象記事')
-                st.markdown(target_df["description"].values[0])
+                st.markdown(doc)
+                st.markdown('---')
+                # 係り受け解析の可視化
+                st.write('### git-- 係り受け解析 --')
+                dev_fig = displacy.render(doc, style="dep", jupyter=False)
+                st.image(dev_fig, width=1200, use_column_width='never')
 
-                # 個別分析の可視化
-                npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
-                npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
+                ent_html = displacy.render(doc, style='ent', jupyter = False)
+                st.write('')
+                st.markdown(ent_html,unsafe_allow_html=True)
 
-                if select_analysis == 'co-occurrence networks':
-                    # Co-occurrence networks
-                    fig_co_network = npt.co_network(
-                        title='Co-occurrence network',
-                        sizing=100,
-                        node_size='adjacency_frequency',
-                        color_palette='hls',
-                        width=1100,
-                        height=700,
-                        save=False
-                    )
-                    st.plotly_chart(fig_co_network, use_container_width=True, sharing='streamlit')
-
-                if select_analysis == 'sunburst chart':
-
-                    # npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
-                    # npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
-
-                    # sunburst chart
-                    fig_sunburst = npt.sunburst(
-                        title='sunburst chart',
-                        colorscale=True,
-                        color_continuous_scale='Oryel',
-                        width=1000,
-                        height=800,
-                        save=False
-                    )
-                    st.plotly_chart(fig_sunburst, use_container_width=True, sharing='streamlit')
-
-            if select_analysis in ['uni-gram chart', 'histgram', 'wordcloud', 'tree map']:
+            elif select_analysis in ['co-occurrence networks', 'uni-gram chart', 'histgram', 'wordcloud', 'tree map', 'sunburst chart']:
 
                 # データの取得
                 df = get_merged_data()
@@ -375,6 +361,119 @@ def main():
                 mask = [i for i in range(id_selector[0], id_selector[1]+1)]
                 target_df = target_df[target_df.index.isin(mask)]
 
+                negative_df = target_df.query('sentiment == "negative"')
+                positive_df = target_df.query('sentiment == "positive"')
+                negative_cnt = negative_df.groupby(['published_at']).count()['sentiment']
+                positive_cnt = positive_df.groupby(['published_at']).count()['sentiment']
+
+                with open('static/stopwords.txt') as f:
+                    stopwords_list = f.read().splitlines()
+
+                if select_analysis == 'co-occurrence networks':
+                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+                    npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
+
+                    # Co-occurrence networks
+                    fig_co_network = npt.co_network(
+                        title='Co-occurrence network',
+                        sizing=100,
+                        node_size='adjacency_frequency',
+                        color_palette='hls',
+                        width=1100,
+                        height=700,
+                        save=False
+                    )
+                    st.plotly_chart(fig_co_network, use_container_width=True, sharing='streamlit')
+
+                if select_analysis == 'uni-gram chart':
+                    # 個別分析の可視化
+                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+
+                    fig_unigram = npt.bar_ngram(
+                        title='N-gram bar chart',
+                        xaxis_label='word_count',
+                        yaxis_label='word',
+                        ngram=1,
+                        top_n=50,
+                        width=400,
+                        height=800,
+                        color=None,
+                        horizon=True,
+                        stopwords=stopwords_list,
+                        verbose=False,
+                        save=False
+                    )
+
+                    st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
+
+                if select_analysis == 'tree map':
+                    # N-gram tree Map
+                    fig_treemap = npt.treemap(
+                        title='Tree map',
+                        ngram=1,
+                        top_n=50,
+                        width=1300,
+                        height=600,
+                        stopwords=stopwords_list,
+                        verbose=False,
+                        save=False
+                    )
+
+                    st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
+
+                elif select_analysis == 'histgram':
+                    # 単語数の分布
+                    fig_histgram = npt.word_distribution(
+                        title='word distribution',
+                        xaxis_label='count',
+                        yaxis_label='',
+                        width=1000,
+                        height=500,
+                        color=None,
+                        template='plotly',
+                        bins=None,
+                        save=False
+                    )
+
+                    st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
+
+                elif select_analysis == 'wordcloud':
+                    # wordcloud
+                    fig_wc = npt.wordcloud(
+                        width=1000,
+                        height=600,
+                        max_words=300,
+                        max_font_size=300,
+                        colormap='tab20_r',
+                        stopwords=stopwords_list,
+                        # mask_file='static/img/shoebill.png',
+                    )
+
+                    plt.figure(figsize=(10, 7))
+                    plt.imshow(fig_wc)
+                    plt.axis('off')
+
+                    buf = io.BytesIO()
+                    plt.savefig(buf, format='png')
+                    buf.seek(0)
+                    st.image(buf, use_column_width=True)
+
+                elif select_analysis == 'sunburst chart':
+
+                    npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
+                    npt.build_graph(stopwords=stopwords_list, min_edge_frequency=0)
+
+                    # sunburst chart
+                    fig_sunburst = npt.sunburst(
+                        title='sunburst chart',
+                        colorscale=True,
+                        color_continuous_scale='Oryel',
+                        width=1000,
+                        height=800,
+                        save=False
+                    )
+                    st.plotly_chart(fig_sunburst, use_container_width=True, sharing='streamlit')
+
                 if target_df is not None:
                     st.write(f'## 記事一覧 ({target_df.shape[0]} 件)')
                     st.caption(f'{date_selector.strftime("%Y年%m月%d日")} から抽出した {target_df.shape[0]} 件')
@@ -382,100 +481,6 @@ def main():
                     target_df['title'] = target_df['title'].str.split('-').str[0].str.split('|').str[0]
                 else:
                     st.error("Sorry, failed to retrieve article. Please select another date.")
-
-                negative_df = target_df.query('sentiment == "negative"')
-                positive_df = target_df.query('sentiment == "positive"')
-                negative_cnt = negative_df.groupby(['published_at']).count()['sentiment']
-                positive_cnt = positive_df.groupby(['published_at']).count()['sentiment']
-
-                selected_option_btn = st.sidebar.button(
-                    '解析実行',
-                    type='primary',
-                    use_container_width=True
-                )
-
-                if selected_option_btn:
-                    session_state.selected_option_btn = True
-
-                if session_state.selected_option_btn:
-
-                    with open('static/stopwords.txt') as f:
-                        stopwords_list = f.read().splitlines()
-
-                    # st.write(stopwords_list)
-
-                    if select_analysis == 'uni-gram chart':
-                        # 個別分析の可視化
-                        npt = nlplot.NLPlot(target_df, target_col='analyzed_text')
-
-                        fig_unigram = npt.bar_ngram(
-                            title='N-gram bar chart',
-                            xaxis_label='word_count',
-                            yaxis_label='word',
-                            ngram=1,
-                            top_n=50,
-                            width=400,
-                            height=800,
-                            color=None,
-                            horizon=True,
-                            stopwords=stopwords_list,
-                            verbose=False,
-                            save=False
-                        )
-
-                        st.plotly_chart(fig_unigram, use_container_width=True, sharing='streamlit')
-
-                    if select_analysis == 'tree map':
-                        # N-gram tree Map
-                        fig_treemap = npt.treemap(
-                            title='Tree map',
-                            ngram=1,
-                            top_n=50,
-                            width=1300,
-                            height=600,
-                            stopwords=stopwords_list,
-                            verbose=False,
-                            save=False
-                        )
-
-                        st.plotly_chart(fig_treemap, use_container_width=True, sharing='streamlit')
-
-                    elif  select_analysis == 'histgram':
-                        # 単語数の分布
-                        fig_histgram = npt.word_distribution(
-                            title='word distribution',
-                            xaxis_label='count',
-                            yaxis_label='',
-                            width=1000,
-                            height=500,
-                            color=None,
-                            template='plotly',
-                            bins=None,
-                            save=False
-                        )
-
-                        st.plotly_chart(fig_histgram, use_container_width=True, sharing='streamlit')
-
-                    elif select_analysis == 'wordcloud':
-                        # wordcloud
-                        fig_wc = npt.wordcloud(
-                            # width=1000,
-                            # height=600,
-                            max_words=300,
-                            max_font_size=300,
-                            colormap='tab20_r',
-                            stopwords=stopwords_list,
-                            # mask_file='static/img/japanesemap.png',
-                        )
-
-                        plt.figure(figsize=(10, 7))
-                        plt.imshow(fig_wc)
-                        plt.axis('off')
-
-                        buf = io.BytesIO()
-                        plt.savefig(buf, format='png')
-                        buf.seek(0)
-                        st.image(buf, use_column_width=True)
 
             else:
                 st.info('左側のメニューから可視化方法を選択してください')
