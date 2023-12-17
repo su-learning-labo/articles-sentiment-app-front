@@ -314,7 +314,7 @@ def main():
                 st.markdown(doc)
                 st.markdown('---')
                 # 係り受け解析の可視化
-                st.write('### git-- 係り受け解析 --')
+                st.write('### -- 係り受け解析 --')
                 dev_fig = displacy.render(doc, style="dep", jupyter=False)
                 st.image(dev_fig, width=1200, use_column_width='never')
 
